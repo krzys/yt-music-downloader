@@ -27,10 +27,6 @@ public class Request {
     public int send() throws IOException {
         int statusCode = m_conn.getResponseCode();
 
-        String cookiesHeader = m_conn.getHeaderField("Set-Cookie");
-        List<HttpCookie> cookies = HttpCookie.parse(cookiesHeader);
-        cookies.forEach(cookie -> m_cookieManager.getCookieStore().add(null, cookie));
-
         return statusCode;
     }
 
@@ -39,6 +35,12 @@ public class Request {
     }
 
     public List<HttpCookie> getCookies() {
+        if(m_cookieManager.getCookieStore().getCookies().isEmpty()) {
+            String cookiesHeader = m_conn.getHeaderField("Set-Cookie");
+            List<HttpCookie> cookies = HttpCookie.parse(cookiesHeader);
+            cookies.forEach(cookie -> m_cookieManager.getCookieStore().add(null, cookie));
+        }
+
         return m_cookieManager.getCookieStore().getCookies();
     }
 
