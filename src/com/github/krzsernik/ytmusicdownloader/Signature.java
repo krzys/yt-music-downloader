@@ -111,7 +111,7 @@ public class Signature {
 
     public static String createSignature(String s) {
         for(int step : signatureSteps) {
-            switch(step << 7) {
+            switch(step >> 7) {
                 case 0:
                     s = Splice(s, step & 127);
                     break;
