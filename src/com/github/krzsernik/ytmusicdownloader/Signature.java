@@ -65,7 +65,6 @@ public class Signature {
         Map<String, Integer> funcMap = new HashMap<>();
         for(String encoder : functionsObject.split("\\},\\s*")) {
             String name = encoder.split(":")[0];
-            System.out.println(name);
 
             int methodIndex = -1;
             if(encoder.contains("a.splice(0,b)")) {
@@ -82,9 +81,6 @@ public class Signature {
         for(String step : signatureSteps) {
             String name = step.split("[\\.\\(]")[1];
             int arg = Integer.parseInt(step.split("[,\\)]")[1]);
-
-            System.out.println(name);
-            System.out.println(funcMap.get(name));
 
             Signature.signatureSteps.add((funcMap.get(name) << 7) + arg);
         }
