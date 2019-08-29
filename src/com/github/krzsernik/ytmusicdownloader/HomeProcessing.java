@@ -2,59 +2,97 @@ package com.github.krzsernik.ytmusicdownloader;
 
 import org.json.JSONObject;
 
-import java.io.IOException;
+import java.io.*;
+import java.net.HttpCookie;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 
 public class HomeProcessing {
     JSONObject prevEndpoint;
-    JSONObject requestBody;
+    JSONObject requestBody = new JSONObject("{\"context\":{\"client\":{\"clientName\":\"WEB_REMIX\"," +
+            "\"clientVersion\":\"0.1\",\"hl\":\"pl\",\"gl\":\"PL\",\"experimentIds\":[],\"utcOffsetMinutes\":120," +
+            "\"locationInfo\":{\"locationPermissionAuthorizationStatus\":" +
+            "\"LOCATION_PERMISSION_AUTHORIZATION_STATUS_UNSUPPORTED\"}," +
+            "\"musicAppInfo\":{\"musicActivityMasterSwitch\":\"MUSIC_ACTIVITY_MASTER_SWITCH_INDETERMINATE\"," +
+            "\"musicLocationMasterSwitch\":\"MUSIC_LOCATION_MASTER_SWITCH_INDETERMINATE\"}}," +
+            "\"capabilities\":{},\"request\":{\"sessionIndex\":{},\"internalExperimentFlags\":{}},\"user\":{\"enableSafetyMode\":false}}," +
+            "\"enablePersistentPlaylistPanel\":true,\"tunerSettingValue\":\"AUTOMIX_SETTING_NORMAL\"," +
+            "\"isAudioOnly\":true}");
+    JSONObject homeJson;
+    List<HttpCookie> cookies;
+    String referer;
+    List<Video> videosList = new ArrayList<>();
 
     HomeProcessing(String url) throws IOException {
+        referer = url;
         Request req = new Request(url, "GET");
-        req.setRequestHeader("User-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.132 Safari/537.36");
         req.send();
 
         String homeBody = req.getContent();
+        cookies = req.getCookies();
         req.close();
 
+        scrapeData(homeBody);
+
+        JSONObject ou = youtubeRequest("https://music.youtube.com/youtubei/v1/next?alt=json&key=" + homeJson.getString("INNERTUBE_API_KEY"));
+        JSONObject videos = ou.getJSONObject("contents").getJSONObject("singleColumnMusicWatchNextResultsRenderer")
+                .getJSONObject("playlist").getJSONObject("playlistPanelRenderer").getJSONObject("contents");
+        for(String key : videos.keySet()) {
+            videosList.add(new Video(videos.getJSONObject(key).getJSONObject("playlistPanelVideoRenderer")));
+        }
+    }
+
+    public JSONObject youtubeRequest(String url) throws IOException {
+        Request req = new Request(url, "POST");
+        req.setCookies(cookies);
+        req.setRequestHeader("Content-Type", "application/json; charset=utf-8");
+        req.setRequestHeader("referer", referer);
+        req.setRequestHeader("x-goog-visitor-id", homeJson.getString("VISITOR_DATA"));
+        req.setRequestHeader("x-youtube-client-name", homeJson.get("INNERTUBE_CONTEXT_CLIENT_NAME").toString());
+        req.setRequestHeader("x-youtube-client-version", homeJson.getString("INNERTUBE_CLIENT_VERSION"));
+//        req.setRequestHeader("x-youtube-identity-token", homeJson.getString("ID_TOKEN"));
+        req.setRequestHeader("x-youtube-page-cl", homeJson.get("PAGE_CL").toString());
+        req.setRequestHeader("x-youtube-page-label", homeJson.getString("PAGE_BUILD_LABEL"));
+        req.setRequestHeader("x-youtube-utc-offset", "120");
+
+        JSONObject data = new JSONObject(requestBody, requestBody.keySet().toArray(new String[0]));
+        for (Iterator<String> it = prevEndpoint.keys(); it.hasNext(); ) {
+            String key = it.next();
+            data.put(key, prevEndpoint.get(key));
+        }
+        req.setData(data.toString());
+
+        int status = req.send();
+        System.out.println("STATUS: " + status);
+
+        return new JSONObject(req.getContent());
+    }
+
+    public void scrapeData(String homeBody) {
         String json = homeBody.split("ytcfg\\.set\\(")[1];
         json = json.split("\\);</script>")[0];
 
-        JSONObject jsonObj = new JSONObject(json);
+        homeJson = new JSONObject(json);
 
-        requestBody = new JSONObject("{\"context\":{\"client\":{\"clientName\":\"WEB_REMIX\"," +
-                "\"clientVersion\":\"0.1\",\"hl\":\"pl\",\"gl\":\"PL\",\"experimentIds\":[]}," +
-                "\"capabilities\":{},\"request\":{\"internalExperimentFlags\":{}}}," +
-                "\"enablePersistentPlaylistPanel\":true,\"tunerSettingValue\":\"AUTOMIX_SETTING_NORMAL\"," +
-                "\"isAudioOnly\":true}");
-
-        JSONObject flags = jsonObj.getJSONObject("EXPERIMENT_FLAGS");
+        JSONObject flags = homeJson.getJSONObject("EXPERIMENT_FLAGS");
+        JSONObject experimentFlags = requestBody.getJSONObject("context").getJSONObject("request")
+                .getJSONObject("internalExperimentFlags");
         for (Iterator<String> it = flags.keys(); it.hasNext(); ) {
             String key = it.next();
-            requestBody.getJSONObject("context").getJSONObject("request")
-                    .getJSONObject("internalExperimentFlags").put(key, flags.get(key));
+            experimentFlags.put(key, flags.get(key));
         }
 
-        prevEndpoint = new JSONObject(jsonObj.getString("INITIAL_ENDPOINT"));
-        String baseJSUrl = "https:" + jsonObj.getJSONObject("PLAYER_CONFIG").getJSONObject("assets").getString("js");
+        prevEndpoint = new JSONObject(homeJson.getString("INITIAL_ENDPOINT")).getJSONObject("watchEndpoint");
+        String baseJSUrl = "https:" + homeJson.getJSONObject("PLAYER_CONFIG").getJSONObject("assets").getString("js");
         System.out.println(baseJSUrl);
 
         Signature.setBaseUrl(baseJSUrl);
-
-        /*
-        x-youtube-client-name: INNERTUBE_CONTEXT_CLIENT_NAME
-        x-youtube-client-version: INNERTUBE_CLIENT_VERSION
-        x-youtube-identity-token: QUFFLUhqbXN1ZEZhX0ZXN1VQTlhFaUhoek5HUWNmODBZQXw=  <--- only important when logged in, created in index
-        x-youtube-page-cl: PAGE_CL
-        x-youtube-page-label: PAGE_BUILD_LABEL
-        x-youtube-utc-offset: 120  <--- offset from utc given in minutes
-         */
     }
 
     public static void main(String[] args) {
         try {
-            HomeProcessing h = new HomeProcessing("https://music.youtube.com/watch?v=idvFihD_cJk");
+            HomeProcessing h = new HomeProcessing("https://music.youtube.com/watch?v=aAmq7lJLwh8&list=RDMM9EwXewPAFZk");
         } catch (IOException e) {
             e.printStackTrace();
         }
