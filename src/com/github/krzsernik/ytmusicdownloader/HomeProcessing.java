@@ -1,8 +1,9 @@
 package com.github.krzsernik.ytmusicdownloader;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.*;
+import java.io.IOException;
 import java.net.HttpCookie;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -36,9 +37,9 @@ public class HomeProcessing {
         scrapeData(homeBody);
 
         JSONObject ou = youtubeRequest("https://music.youtube.com/youtubei/v1/next?alt=json&key=" + homeJson.getString("INNERTUBE_API_KEY"));
-        JSONObject videos = ou.getJSONObject("contents").getJSONObject("singleColumnMusicWatchNextResultsRenderer")
-                .getJSONObject("playlist").getJSONObject("playlistPanelRenderer").getJSONObject("contents");
-        for(String key : videos.keySet()) {
+        JSONArray videos = ou.getJSONObject("contents").getJSONObject("singleColumnMusicWatchNextResultsRenderer")
+                .getJSONObject("playlist").getJSONObject("playlistPanelRenderer").getJSONArray("contents");
+        for(int key = 0; key < videos.length(); key++) {
             videosList.add(new Video(videos.getJSONObject(key).getJSONObject("playlistPanelVideoRenderer")));
         }
     }
@@ -93,6 +94,9 @@ public class HomeProcessing {
     public static void main(String[] args) {
         try {
             HomeProcessing h = new HomeProcessing("https://music.youtube.com/watch?v=aAmq7lJLwh8&list=RDMM9EwXewPAFZk");
+//            for (Video v: h.videosList) {
+//                System.out.println(v.author + " - " + v.title);
+//            }
         } catch (IOException e) {
             e.printStackTrace();
         }
