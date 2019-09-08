@@ -1,84 +1,83 @@
-package com.github.krzsernik.ytmusicdownloader;
+package com.github.krzsernik.ytmusicdownloader
 
-import javax.net.ssl.HttpsURLConnection;
-import java.io.*;
-import java.net.*;
-import java.util.List;
+import java.io.BufferedReader
+import java.io.IOException
+import java.io.InputStreamReader
+import java.net.CookieManager
+import java.net.HttpCookie
+import java.net.URL
+import javax.net.ssl.HttpsURLConnection
 
-public class Request {
-    private String m_url;
-    private CookieManager m_cookieManager = new CookieManager();
-    private HttpsURLConnection m_conn;
+class Request @Throws(IOException::class)
+internal constructor(private val m_url: String, method: String) {
+    private val m_cookieManager = CookieManager()
+    val connection: HttpsURLConnection
 
-    Request(String url, String method) throws IOException {
-        m_url = url;
+    var cookies: List<HttpCookie>
+        get() {
+            if (m_cookieManager.cookieStore.cookies.isEmpty()) {
+                val cookiesHeader = connection.getHeaderField("Set-Cookie")
+                val cookies = HttpCookie.parse(cookiesHeader)
+                cookies.forEach { cookie -> m_cookieManager.cookieStore.add(null, cookie) }
+            }
 
-        URL urlObj = new URL(url);
-        m_conn = (HttpsURLConnection) urlObj.openConnection();
-        m_conn.setConnectTimeout(5000);
-        m_conn.setRequestMethod(method);
-        m_conn.setRequestProperty("Accept", "*/*");
-        m_conn.setRequestProperty("User-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.132 Safari/537.36");
-        m_conn.setDoInput(true);
-    }
-
-    public void setRequestHeader(String name, String value) {
-        m_conn.setRequestProperty(name, value);
-    }
-
-    public void setCookies(List<HttpCookie> cookies) {
-        StringBuilder sb = new StringBuilder();
-        cookies.forEach(cookie -> {
-            sb.append(cookie.toString() + "; ");
-        });
-        m_conn.setRequestProperty("Cookie", sb.toString());
-    }
-
-    public void setData(String output) throws IOException {
-        m_conn.setDoOutput(true);
-
-        OutputStream os = m_conn.getOutputStream();
-        os.write(output.getBytes("UTF-8"));
-    }
-
-    public int send() throws IOException {
-        int statusCode = m_conn.getResponseCode();
-
-        return statusCode;
-    }
-
-    public HttpsURLConnection getConnection() {
-        return m_conn;
-    }
-
-    public String getHeader(String name) {
-        return m_conn.getHeaderField(name);
-    }
-
-    public List<HttpCookie> getCookies() {
-        if(m_cookieManager.getCookieStore().getCookies().isEmpty()) {
-            String cookiesHeader = m_conn.getHeaderField("Set-Cookie");
-            List<HttpCookie> cookies = HttpCookie.parse(cookiesHeader);
-            cookies.forEach(cookie -> m_cookieManager.getCookieStore().add(null, cookie));
+            return m_cookieManager.cookieStore.cookies
+        }
+        set(cookies) {
+            val sb = StringBuilder()
+            cookies.forEach { cookie -> sb.append("$cookie; ") }
+            connection.setRequestProperty("Cookie", sb.toString())
         }
 
-        return m_cookieManager.getCookieStore().getCookies();
-    }
+    val content: String
+        @Throws(IOException::class)
+        get() {
+            val inp = BufferedReader(InputStreamReader(connection.inputStream))
+            var inputLine = inp.readLine()
+            val content = StringBuilder()
+            while (inputLine != null) {
+                content.append(inputLine)
 
-    public String getContent() throws IOException {
-        BufferedReader in = new BufferedReader(new InputStreamReader(m_conn.getInputStream()));
-        String inputLine;
-        StringBuilder content = new StringBuilder();
-        while ((inputLine = in.readLine()) != null) {
-            content.append(inputLine);
+                inputLine = inp.readLine()
+            }
+            inp.close()
+
+            return content.toString()
         }
-        in.close();
 
-        return content.toString();
+    init {
+        val urlObj = URL(m_url)
+        connection = urlObj.openConnection() as HttpsURLConnection
+        connection.connectTimeout = 5000
+        connection.requestMethod = method
+        connection.setRequestProperty("Accept", "*/*")
+        connection.setRequestProperty("User-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.132 Safari/537.36")
+        connection.doInput = true
     }
 
-    public void close() {
-        m_conn.disconnect();
+    fun setRequestHeader(name: String, value: String) {
+        connection.setRequestProperty(name, value)
+    }
+
+    @Throws(IOException::class)
+    fun setData(output: String) {
+        connection.doOutput = true
+
+        val os = connection.outputStream
+        os.write(output.toByteArray(charset("UTF-8")))
+    }
+
+    @Throws(IOException::class)
+    fun send(): Int {
+
+        return connection.responseCode
+    }
+
+    fun getHeader(name: String): String {
+        return connection.getHeaderField(name)
+    }
+
+    fun close() {
+        connection.disconnect()
     }
 }

@@ -1,7 +1,7 @@
 <component name="libraryTable">
-  <library name="json-java">
+  <library name="tornadofx-1.7.19">
     <CLASSES>
-      <root url="jar://$PROJECT_DIR$/lib/json-20180813.jar!/" />
+      <root url="jar://$PROJECT_DIR$/lib/tornadofx-1.7.19.jar!/" />
     </CLASSES>
     <JAVADOC />
     <SOURCES />

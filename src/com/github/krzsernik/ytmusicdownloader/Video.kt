@@ -1,19 +1,26 @@
-package com.github.krzsernik.ytmusicdownloader;
+package com.github.krzsernik.ytmusicdownloader
 
-import org.json.JSONObject;
+import org.json.JSONObject
 
-public class Video {
-    String id;
-    String title;
-    String author;
-    JSONObject endpoint;
+class Video {
+    internal var id: String
+    internal var title: String
+    internal var author: String
+    internal var endpoint: JSONObject
 
-    Video(JSONObject videoInfo) {
-        id = videoInfo.getString("videoId");
+    internal constructor(title: String, author: String) {
+        this.id = ""
+        this.title = title
+        this.author = author
+        this.endpoint = JSONObject()
+    }
+
+    internal constructor(videoInfo: JSONObject) {
+        id = videoInfo.getString("videoId")
         title = videoInfo.getJSONObject("title").getJSONArray("runs")
-                .getJSONObject(0).getString("text");
+                .getJSONObject(0).getString("text")
         author = videoInfo.getJSONObject("shortBylineText").getJSONArray("runs")
-                .getJSONObject(0).getString("text");
-        endpoint = videoInfo.getJSONObject("navigationEndpoint").getJSONObject("watchEndpoint");
+                .getJSONObject(0).getString("text")
+        endpoint = videoInfo.getJSONObject("navigationEndpoint").getJSONObject("watchEndpoint")
     }
 }

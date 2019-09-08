@@ -1,125 +1,118 @@
-package com.github.krzsernik.ytmusicdownloader;
+package com.github.krzsernik.ytmusicdownloader
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.io.IOException
+import java.util.*
 
-public class Signature {
-    private static String baseUrl;
-    private static List<Integer> signatureSteps = new ArrayList<>();
+object Signature {
+    private var baseUrl: String? = null
+    private val signatureSteps = ArrayList<Int>()
 
-    public static void setBaseUrl(String baseUrl) {
-        Signature.baseUrl = baseUrl;
+    private val signatureSetterPatterns = listOf(
+            """.\.s&&.\.set\(.\.sp,encodeURIComponent\(([a-zA-Z0-9]+)\(decodeURIComponent\(.\.s\)\)\)\)""".toRegex(),
+            """.&&.\.set\(.,encodeURIComponent\(([a-zA-Z0-9]+)\(decodeURIComponent\(.\)\)\)\)""".toRegex())
+
+    fun setBaseUrl(baseUrl: String) {
+        Signature.baseUrl = baseUrl
 
         try {
-            Request req = new Request(baseUrl, "GET");
-            req.send();
+            val req = Request(baseUrl, "GET")
+            req.send()
 
-            String javascript = req.getContent();
-            Signature.parseJavaScript(javascript);
-        } catch (IOException e) {
-            e.printStackTrace();
+            val javascript = req.content
+
+            Signature.parseJavaScript(javascript)
+        } catch (e: IOException) {
+            e.printStackTrace()
         }
+
     }
 
-    private static List<String> signatureSetterPatterns = List.of(
-            ".\\.s&&.\\.set\\(.\\.sp,encodeURIComponent\\(([a-zA-Z0-9]+)\\(decodeURIComponent\\(.\\.s\\)\\)\\)\\)",
-            ".&&.\\.set\\(.,encodeURIComponent\\(([a-zA-Z0-9]+)\\(decodeURIComponent\\(.\\)\\)\\)\\)");
-    private static void parseJavaScript(String code) {
-        boolean found = false;
-        String encodingFunction = null;
+    private fun parseJavaScript(code: String) {
+        var found = false
+        var encodingFunction: String? = null
 
-        outer: for(String pattern : signatureSetterPatterns) {
-            Pattern patt = Pattern.compile(pattern);
-            Matcher mat = patt.matcher(code);
+        outer@ for (pattern in signatureSetterPatterns) {
+            val mat = pattern.find(code)
 
-            while(mat.find()) {
-                encodingFunction = mat.group(1);
-                found = true;
-
-                break outer;
+            if(mat != null && mat.groupValues.size > 1) {
+                found = true
+                encodingFunction = mat.groupValues[1]
+                break@outer
             }
         }
 
-        if(!found) {
-            System.err.println("Pattern havent found");
-            System.err.println(baseUrl);
+        if (found) {
+            var function = code.split((encodingFunction!! + "=function\\(a\\)\\{").toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()[1]
+            function = function.split(";return a\\.join\\(\"\"\\)\\};".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()[0]
 
-            return;
-        }
+            val signatureSteps = ArrayList<String>(listOf(*function.split(";".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()))
+            signatureSteps.remove(signatureSteps.get(0)) // remove `a.split("")`
 
-        String function = code.split(encodingFunction + "=function\\(a\\)\\{")[1];
-        function = function.split(";return a\\.join\\(\"\"\\)\\};")[0];
+            val functionsObjectName = signatureSteps.get(0).split("\\.".toRegex()).dropLastWhile({ it.isEmpty() }).toTypedArray()[0]
+            var functionsObject = code.split((functionsObjectName + "=\\{").toRegex()).dropLastWhile({ it.isEmpty() }).toTypedArray()[1]
+            functionsObject = functionsObject.split("\\}\\};".toRegex()).dropLastWhile({ it.isEmpty() }).toTypedArray()[0]
 
-        List<String> signatureSteps = new ArrayList<String>(List.of(function.split(";")));
-        signatureSteps.remove(signatureSteps.get(0)); // remove `a.split("")`
+            val funcMap = HashMap<String, Int>()
+            for (encoder in functionsObject.split("\\},\\s*".toRegex()).dropLastWhile({ it.isEmpty() }).toTypedArray()) {
+                val name = encoder.split(":".toRegex()).dropLastWhile({ it.isEmpty() }).toTypedArray()[0]
 
-        String functionsObjectName = signatureSteps.get(0).split("\\.")[0];
-        String functionsObject = code.split(functionsObjectName + "=\\{")[1];
-        functionsObject = functionsObject.split("\\}\\};")[0];
+                var methodIndex = -1
+                if (encoder.contains("a.splice(0,b)")) {
+                    methodIndex = 0
+                } else if (encoder.contains("var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c")) {
+                    methodIndex = 1
+                } else if (encoder.contains("a.reverse()")) {
+                    methodIndex = 2
+                }
 
-        Map<String, Integer> funcMap = new HashMap<>();
-        for(String encoder : functionsObject.split("\\},\\s*")) {
-            String name = encoder.split(":")[0];
-
-            int methodIndex = -1;
-            if(encoder.contains("a.splice(0,b)")) {
-                methodIndex = 0;
-            } else if(encoder.contains("var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c")) {
-                methodIndex = 1;
-            } else if(encoder.contains("a.reverse()")) {
-                methodIndex = 2;
+                funcMap[name] = methodIndex
             }
 
-            funcMap.put(name, methodIndex);
-        }
+            for (step in signatureSteps) {
+                val name = step.split("[\\.\\(]".toRegex()).dropLastWhile({ it.isEmpty() }).toTypedArray()[1]
+                val arg = Integer.parseInt(step.split("[,\\)]".toRegex()).dropLastWhile({ it.isEmpty() }).toTypedArray()[1])
 
-        for(String step : signatureSteps) {
-            String name = step.split("[\\.\\(]")[1];
-            int arg = Integer.parseInt(step.split("[,\\)]")[1]);
-
-            Signature.signatureSteps.add((funcMap.get(name) << 7) + arg);
+                Signature.signatureSteps.add((funcMap.getOrDefault(name, 0) shl 7) + arg)
+            }
+        } else {
+            System.err.println("\n------------------------")
+            System.err.println("Pattern hasnt been found")
+            System.err.println(baseUrl)
+            System.err.println("------------------------\n")
         }
     }
 
     // function(a,b){a.splice(0,b)}
-    public static String Splice(String s, int b) {
-        return s.substring(b);
+    fun Splice(s: String, b: Int): String {
+        return s.substring(b)
     }
+
     // function(a,b){var c=a[0];a[0]=a[b%a.length];a[b%a.length]=c}
-    public static String Replace(String s, int b) {
-        char[] a = s.toCharArray();
-        char c = a[0];
-        a[0] = a[b % a.length];
-        a[b % a.length] = c;
+    fun Replace(s: String, b: Int): String {
+        val a = s.toCharArray()
+        val c = a[0]
+        a[0] = a[b % a.size]
+        a[b % a.size] = c
 
-        return String.copyValueOf(a);
+        return String(a)
     }
+
     // function(a){a.reverse()}
-    public static String Reverse(String s, @SuppressWarnings("unused") int b) {
-        StringBuilder a = new StringBuilder(s);
-        return a.reverse().toString();
+    fun Reverse(s: String, b: Int): String {
+        val a = StringBuilder(s)
+        return a.reverse().toString()
     }
 
-    public static String createSignature(String s) {
-        for(int step : signatureSteps) {
-            switch(step >> 7) {
-                case 0:
-                    s = Splice(s, step & 127);
-                    break;
-                case 1:
-                    s = Replace(s, step & 127);
-                    break;
-                case 2:
-                    s = Reverse(s, step & 127);
-                    break;
+    fun createSignature(s: String): String {
+        var s = s
+        for (step in signatureSteps) {
+            when (step shr 7) {
+                0 -> s = Splice(s, step and 127)
+                1 -> s = Replace(s, step and 127)
+                2 -> s = Reverse(s, step and 127)
             }
         }
 
-        return s;
+        return s
     }
 }
